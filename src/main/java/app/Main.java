@@ -11,7 +11,7 @@ public class Main {
     private static final int PORT = 8080;
 
     public static void main(String[] args) throws IOException {
-
+        SurvivalService service = new SurvivalService();
 
 
 
@@ -21,6 +21,7 @@ public class Main {
         // Каждый контекст — это префикс пути и обработчик для него.
         // Внимание: контекст "/ping" получит и запросы на "/ping/что-угодно".
         server.createContext("/ping", new PingHandler());
+        server.createContext("/survivors", new SurvivorHandler(service));
 
         // TODO: зарегистрируйте здесь обработчики своих ресурсов
 

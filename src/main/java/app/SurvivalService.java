@@ -54,7 +54,29 @@ public class SurvivalService {
         }
         return count;
     }
-    public boolean deleteItem(int id){return items.remove(id)!= null; }
+    public boolean deleteItem(int id) {
+        for(List<Integer> inventory: inventories.values()){
+            inventory.remove(Integer.valueOf(id));
+        }
+        return items.remove(id) != null;
+    }
+    public boolean deleteSurvivor(int id){
+        if (!survivors.containsKey(id)){
+            return false;
+        }
+        List<Integer> inventory = inventories.get(id);
+        for (Integer itemId: inventory) {
+            items.remove(itemId);
+
+        }
+        inventories.remove(id);
+        survivors.remove(id);
+
+        return true;
+
+    }
+
+
     public int createSurvivor(String name ){
         Survivor survivor= new Survivor(name);
         int id=nextId;
@@ -82,9 +104,7 @@ public class SurvivalService {
     public Collection<Survivor> getAllSurvivors(){
         return survivors.values();
     }
-    public boolean deleteSurvivor(int id){
-        return survivors.remove(id) != null;
-    }
+
     public boolean damageSurvivor(int id,int amount){
         Survivor survivor = survivors.get(id);
 
