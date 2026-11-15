@@ -117,6 +117,43 @@ public class SurvivalService {
 
 
     }
+    public Collection<Item> getAllItems() {
+        return items.values();
+    }
+    public boolean updateSurvivor(int id, String name) {
+        Survivor survivor = survivors.get(id);
+
+        if (survivor == null || name == null || name.isBlank()) {
+            return false;
+        }
+
+        survivor.setName(name);
+        return true;
+    }
+    public Collection<Survivor> findSurvivorsByName(String name) {
+        List<Survivor> result = new ArrayList<>();
+
+        for (Survivor survivor : survivors.values()) {
+            if (survivor.getName().toLowerCase()
+                    .contains(name.toLowerCase())) {
+                result.add(survivor);
+            }
+        }
+
+        return result;
+    }
+    public Collection<Survivor> getAliveSurvivors() {
+        List<Survivor> result = new ArrayList<>();
+
+        for (Survivor survivor : survivors.values()) {
+            if (survivor.getHealth() > 0) {
+                result.add(survivor);
+            }
+        }
+
+        return result;
+    }
+
     public boolean useItem(int survivorId, Item item) {
         Survivor survivor = survivors.get(survivorId);
 
@@ -127,4 +164,29 @@ public class SurvivalService {
         item.use(survivor);
         return true;
     }
+    public boolean updateItem(int id, Item item) {
+        if (!items.containsKey(id) || item == null) {
+            return false;
+        }
+
+        items.put(id, item);
+        return true;
+    }
+
+    public Collection<Item> getItemsByType(String type) {
+        List<Item> result = new ArrayList<>();
+
+        for (Item item : items.values()) {
+            if (type.equalsIgnoreCase("medkit") && item instanceof Medkit) {
+                result.add(item);
+            }
+
+            if (type.equalsIgnoreCase("energyDrink") && item instanceof EnergyDrink) {
+                result.add(item);
+            }
+        }
+
+        return result;
+    }
+
 }

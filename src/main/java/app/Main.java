@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
-
 public class Main {
 
     private static final int PORT = 8080;
@@ -13,19 +12,14 @@ public class Main {
     public static void main(String[] args) throws IOException {
         SurvivalService service = new SurvivalService();
 
-
-
-
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
 
-        // Каждый контекст — это префикс пути и обработчик для него.
-        // Внимание: контекст "/ping" получит и запросы на "/ping/что-угодно".
         server.createContext("/ping", new PingHandler());
         server.createContext("/survivors", new SurvivorHandler(service));
-
-        // TODO: зарегистрируйте здесь обработчики своих ресурсов
+        server.createContext("/items", new ItemHandler(service));
 
         server.start();
+
         System.out.println("Сервер запущен: http://localhost:" + PORT + "/ping");
     }
 }

@@ -41,5 +41,9 @@ public class Survivor {
         }
 
     }
+    public void setName(String name) {
+        this.name = name;
+    }
+
 }
 
