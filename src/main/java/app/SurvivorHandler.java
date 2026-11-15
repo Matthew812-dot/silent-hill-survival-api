@@ -31,7 +31,6 @@ public class SurvivorHandler implements HttpHandler {
 
         try {
 
-            // GET: получение выживших
             if (method.equals("GET")) {
 
                 if (path.equals("/survivors")) {
@@ -71,7 +70,6 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            // POST: создание выжившего
             if (method.equals("POST") && path.equals("/survivors")) {
 
                 JsonNode json = mapper.readTree(
@@ -94,7 +92,6 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            // POST: добавление предмета в инвентарь
             if (method.equals("POST") &&
                     path.matches("/survivors/\\d+/inventory")) {
 
@@ -124,7 +121,6 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            // POST: использование предмета
             if (method.equals("POST") &&
                     path.matches("/survivors/\\d+/inventory/\\d+/use")) {
 
@@ -143,7 +139,6 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            // PUT: изменение имени выжившего
             if (method.equals("PUT") && path.matches("/survivors/\\d+")) {
 
                 int id = getId(path);
@@ -172,7 +167,6 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            // DELETE: удаление выжившего
             if (method.equals("DELETE") && path.matches("/survivors/\\d+")) {
 
                 int id = getId(path);
@@ -204,7 +198,6 @@ public class SurvivorHandler implements HttpHandler {
         }
     }
 
-    // Получение ID из адреса
     private int getId(String path) {
 
         String[] parts = path.split("/");
@@ -216,7 +209,6 @@ public class SurvivorHandler implements HttpHandler {
         return Integer.parseInt(parts[2]);
     }
 
-    // Отправка JSON
     private void sendJson(HttpExchange exchange, int code, Object data)
             throws IOException {
 
@@ -233,7 +225,6 @@ public class SurvivorHandler implements HttpHandler {
         }
     }
 
-    // Отправка ошибки
     private void sendError(HttpExchange exchange, int code, String message)
             throws IOException {
 

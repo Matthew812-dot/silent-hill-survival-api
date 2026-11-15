@@ -28,7 +28,6 @@ public class ItemHandler implements HttpHandler {
 
         try {
 
-            // GET
             if (method.equals("GET")) {
 
                 if (path.equals("/items")) {
@@ -59,7 +58,6 @@ public class ItemHandler implements HttpHandler {
                 return;
             }
 
-            // POST
             if (method.equals("POST") && path.equals("/items")) {
 
                 JsonNode json = mapper.readTree(
@@ -89,7 +87,6 @@ public class ItemHandler implements HttpHandler {
                 return;
             }
 
-            // PUT
             if (method.equals("PUT")) {
 
                 int id = getId(path);
@@ -126,7 +123,6 @@ public class ItemHandler implements HttpHandler {
                 return;
             }
 
-            // DELETE
             if (method.equals("DELETE")) {
 
                 int id = getId(path);
