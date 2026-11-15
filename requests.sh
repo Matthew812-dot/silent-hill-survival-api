@@ -90,3 +90,27 @@ curl -i -X PUT http://localhost:8080/survivors/999 \
   -d '{"name":"Nobody"}'
 
 curl -i -X DELETE http://localhost:8080/items/999
+
+curl -i -X POST http://localhost:8080/survivors \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Heather"}'
+
+curl -i -X POST http://localhost:8080/survivors/2/damage \
+  -H "Content-Type: application/json" \
+  -d '{"amount":50}'
+
+curl -i http://localhost:8080/survivors/2
+
+curl -i -X POST http://localhost:8080/items \
+  -H "Content-Type: application/json" \
+  -d '{"type":"medkit"}'
+
+curl -i -X POST http://localhost:8080/survivors/2/inventory \
+  -H "Content-Type: application/json" \
+  -d '{"itemId":4}'
+
+curl -i -X POST http://localhost:8080/survivors/2/inventory/4/use
+
+curl -i http://localhost:8080/survivors/2
+
+curl -i -X POST http://localhost:8080/survivors/2/inventory/4/use

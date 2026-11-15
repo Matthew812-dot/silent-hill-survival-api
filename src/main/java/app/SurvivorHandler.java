@@ -30,6 +30,31 @@ public class SurvivorHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
 
         try {
+            if (method.equals("POST") && path.matches("/survivors/\\d+/damage")) {
+                int id = Integer.parseInt(path.split("/")[2]);
+
+                JsonNode json = mapper.readTree(
+                        exchange.getRequestBody().readAllBytes()
+                );
+
+                if (json == null || json.get("amount") == null ||
+                        !json.get("amount").isIntegralNumber() ||
+                        json.get("amount").asInt() <= 0) {
+                    sendError(exchange, 400, "Invalid damage amount");
+                    return;
+                }
+
+                int amount = json.get("amount").asInt();
+
+                if (!service.damageSurvivor(id, amount)) {
+                    sendError(exchange, 404, "Survivor not found");
+                    return;
+                }
+
+                exchange.sendResponseHeaders(204, -1);
+                exchange.close();
+                return;
+            }
 
             if (method.equals("GET")) {
 
