@@ -1,6 +1,7 @@
 package app;
 
 public class Survivor {
+    private static final int SPRINT_COST = 40;
     private String name;
     private int health;
     private int stamina;
@@ -35,6 +36,15 @@ public class Survivor {
         }
         stamina=Math.min(100, stamina+amount);
     }
+    public boolean sprint() {
+        if (health <= 0 || stamina < SPRINT_COST) {
+            return false;
+        }
+
+        stamina -= SPRINT_COST;
+        return true;
+    }
+
     public void takeDamage(int amount){
         if (amount>0){
             health=Math.max(0, health-amount);

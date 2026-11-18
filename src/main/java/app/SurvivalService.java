@@ -3,6 +3,8 @@ package app;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Collection;
 
@@ -105,6 +107,23 @@ public class SurvivalService {
         return survivors.values();
     }
 
+    public enum SprintResult {
+        SUCCESS,
+        SURVIVOR_NOT_FOUND,
+        CANNOT_SPRINT
+    }
+
+    public SprintResult sprintSurvivor(int id) {
+        Survivor survivor = survivors.get(id);
+        if (survivor == null) {
+            return SprintResult.SURVIVOR_NOT_FOUND;
+        }
+        if (!survivor.sprint()) {
+            return SprintResult.CANNOT_SPRINT;
+        }
+        return SprintResult.SUCCESS;
+    }
+
     public boolean damageSurvivor(int id,int amount){
         Survivor survivor = survivors.get(id);
 
@@ -120,6 +139,10 @@ public class SurvivalService {
     public Collection<Item> getAllItems() {
         return items.values();
     }
+
+    Map<Integer, Item> getAllItemsWithIds() {
+        return new LinkedHashMap<>(items);
+    }
     public boolean updateSurvivor(int id, String name) {
         Survivor survivor = survivors.get(id);
 
@@ -131,23 +154,25 @@ public class SurvivalService {
         return true;
     }
     public Collection<Survivor> findSurvivorsByName(String name) {
-        List<Survivor> result = new ArrayList<>();
-
-        for (Survivor survivor : survivors.values()) {
-            if (survivor.getName().toLowerCase()
-                    .contains(name.toLowerCase())) {
-                result.add(survivor);
-            }
-        }
-
-        return result;
+        return new ArrayList<>(filterSurvivorsWithIds(name, null).values());
     }
-    public Collection<Survivor> getAliveSurvivors() {
-        List<Survivor> result = new ArrayList<>();
 
-        for (Survivor survivor : survivors.values()) {
-            if (survivor.getHealth() > 0) {
-                result.add(survivor);
+    public Collection<Survivor> getAliveSurvivors() {
+        return new ArrayList<>(filterSurvivorsWithIds(null, true).values());
+    }
+
+    Map<Integer, Survivor> filterSurvivorsWithIds(String name, Boolean alive) {
+        Map<Integer, Survivor> result = new LinkedHashMap<>();
+        String search = name == null ? null : name.toLowerCase(Locale.ROOT);
+
+        for (var entry : survivors.entrySet()) {
+            Survivor survivor = entry.getValue();
+            boolean isAlive = survivor.getHealth() > 0;
+            boolean matchesAlive = alive == null || isAlive == alive;
+            boolean matchesName = search == null
+                    || survivor.getName().toLowerCase(Locale.ROOT).contains(search);
+            if (matchesAlive && matchesName) {
+                result.put(entry.getKey(), survivor);
             }
         }
 
@@ -174,15 +199,17 @@ public class SurvivalService {
     }
 
     public Collection<Item> getItemsByType(String type) {
-        List<Item> result = new ArrayList<>();
+        return new ArrayList<>(getItemsByTypeWithIds(type).values());
+    }
 
-        for (Item item : items.values()) {
-            if (type.equalsIgnoreCase("medkit") && item instanceof Medkit) {
-                result.add(item);
-            }
+    Map<Integer, Item> getItemsByTypeWithIds(String type) {
+        Map<Integer, Item> result = new LinkedHashMap<>();
 
-            if (type.equalsIgnoreCase("energyDrink") && item instanceof EnergyDrink) {
-                result.add(item);
+        for (var entry : items.entrySet()) {
+            Item item = entry.getValue();
+            if (type.equalsIgnoreCase("medkit") && item instanceof Medkit
+                    || type.equalsIgnoreCase("energyDrink") && item instanceof EnergyDrink) {
+                result.put(entry.getKey(), item);
             }
         }
 

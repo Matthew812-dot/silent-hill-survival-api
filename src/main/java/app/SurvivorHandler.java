@@ -6,7 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -29,16 +29,58 @@ public class SurvivorHandler implements HttpHandler {
         String method = exchange.getRequestMethod();
         String path = exchange.getRequestURI().getPath();
 
-        try {
-            if (method.equals("POST") && path.matches("/survivors/\\d+/damage")) {
-                int id = Integer.parseInt(path.split("/")[2]);
+        boolean collection = path.equals("/survivors");
+        boolean survivorPath = path.matches("/survivors/[^/]+");
+        boolean sprint = path.matches("/survivors/[^/]+/sprint");
+        boolean damage = path.matches("/survivors/[^/]+/damage");
+        boolean inventory = path.matches("/survivors/[^/]+/inventory");
+        boolean useItem = path.matches("/survivors/[^/]+/inventory/[^/]+/use");
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+        try {
+            List<String> allowedMethods;
+            if (collection) {
+                allowedMethods = List.of("GET", "POST");
+            } else if (survivorPath) {
+                allowedMethods = List.of("GET", "PUT", "DELETE");
+            } else if (sprint || damage || inventory || useItem) {
+                allowedMethods = List.of("POST");
+            } else {
+                allowedMethods = List.of();
+            }
+
+            if (allowedMethods.isEmpty()) {
+                sendError(exchange, 404, "Route not found");
+                return;
+            }
+            if (!allowedMethods.contains(method)) {
+                exchange.getResponseHeaders().set("Allow", String.join(", ", allowedMethods));
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+
+            String[] parts = path.split("/");
+
+            if (sprint) {
+                int id = parseId(parts[2]);
+                switch (service.sprintSurvivor(id)) {
+                    case SUCCESS -> {
+                        exchange.sendResponseHeaders(204, -1);
+                        exchange.close();
+                    }
+                    case SURVIVOR_NOT_FOUND -> sendError(exchange, 404, "Survivor not found");
+                    case CANNOT_SPRINT -> sendError(exchange, 409, "Survivor cannot sprint");
+                }
+                return;
+            }
+
+            if (damage) {
+                int id = parseId(parts[2]);
+
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("amount") == null ||
                         !json.get("amount").isIntegralNumber() ||
+                        !json.get("amount").canConvertToInt() ||
                         json.get("amount").asInt() <= 0) {
                     sendError(exchange, 400, "Invalid damage amount");
                     return;
@@ -58,32 +100,20 @@ public class SurvivorHandler implements HttpHandler {
 
             if (method.equals("GET")) {
 
-                if (path.equals("/survivors")) {
+                if (collection) {
 
-                    String query = exchange.getRequestURI().getRawQuery();
-                    Collection<Survivor> survivors;
+                    SurvivorFilters filters = readFilters(exchange.getRequestURI().getRawQuery());
+                    Map<Integer, Survivor> survivors = service.filterSurvivorsWithIds(filters.name(), filters.alive());
 
-                    if (query != null && query.contains("alive=true")) {
-                        survivors = service.getAliveSurvivors();
+                    List<SurvivorResponse> response = survivors.entrySet().stream()
+                            .map(entry -> SurvivorResponse.from(entry.getKey(), entry.getValue()))
+                            .toList();
 
-                    } else if (query != null && query.contains("name=")) {
-
-                        String name = URLDecoder.decode(
-                                query.substring(query.indexOf("name=") + 5),
-                                StandardCharsets.UTF_8
-                        );
-
-                        survivors = service.findSurvivorsByName(name);
-
-                    } else {
-                        survivors = service.getAllSurvivors();
-                    }
-
-                    sendJson(exchange, 200, survivors);
+                    sendJson(exchange, 200, response);
                     return;
                 }
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
                 Survivor survivor = service.getSurvivor(id);
 
                 if (survivor == null) {
@@ -91,15 +121,13 @@ public class SurvivorHandler implements HttpHandler {
                     return;
                 }
 
-                sendJson(exchange, 200, survivor);
+                sendJson(exchange, 200, SurvivorResponse.from(id, survivor));
                 return;
             }
 
-            if (method.equals("POST") && path.equals("/survivors")) {
+            if (method.equals("POST") && collection) {
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("name") == null ||
                         !json.get("name").isString() ||
@@ -117,18 +145,15 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            if (method.equals("POST") &&
-                    path.matches("/survivors/\\d+/inventory")) {
+            if (inventory) {
 
-                String[] parts = path.split("/");
-                int survivorId = Integer.parseInt(parts[2]);
+                int survivorId = parseId(parts[2]);
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("itemId") == null ||
-                        !json.get("itemId").isIntegralNumber()) {
+                        !json.get("itemId").isIntegralNumber() ||
+                        !json.get("itemId").canConvertToInt()) {
 
                     sendError(exchange, 400, "Invalid itemId");
                     return;
@@ -146,13 +171,10 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            if (method.equals("POST") &&
-                    path.matches("/survivors/\\d+/inventory/\\d+/use")) {
+            if (useItem) {
 
-                String[] parts = path.split("/");
-
-                int survivorId = Integer.parseInt(parts[2]);
-                int itemId = Integer.parseInt(parts[4]);
+                int survivorId = parseId(parts[2]);
+                int itemId = parseId(parts[4]);
 
                 if (!service.useInventoryItem(survivorId, itemId)) {
                     sendError(exchange, 409, "Cannot use item");
@@ -164,13 +186,11 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            if (method.equals("PUT") && path.matches("/survivors/\\d+")) {
+            if (method.equals("PUT")) {
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("name") == null ||
                         !json.get("name").isString() ||
@@ -192,9 +212,9 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            if (method.equals("DELETE") && path.matches("/survivors/\\d+")) {
+            if (method.equals("DELETE")) {
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
 
                 if (!service.deleteSurvivor(id)) {
                     sendError(exchange, 404, "Survivor not found");
@@ -206,32 +226,93 @@ public class SurvivorHandler implements HttpHandler {
                 return;
             }
 
-            exchange.getResponseHeaders().set(
-                    "Allow", "GET, POST, PUT, DELETE"
-            );
-
-            sendError(exchange, 405, "Method not allowed");
-
-        } catch (NumberFormatException e) {
-
-            sendError(exchange, 400, "Invalid ID");
-
-        } catch (Exception e) {
-
+        } catch (RequestBody.TooLargeException e) {
+            exchange.getResponseHeaders().set("Connection", "close");
+            sendError(exchange, 413, e.getMessage());
+        } catch (BadRequestException e) {
+            sendError(exchange, 400, e.getMessage());
+        } catch (IOException e) {
+            exchange.close();
+            throw e;
+        } catch (RuntimeException e) {
             e.printStackTrace();
-            sendError(exchange, 400, "Invalid request");
+            if (exchange.getResponseCode() == -1) {
+                sendError(exchange, 500, "Internal server error");
+            } else {
+                exchange.close();
+            }
         }
     }
 
-    private int getId(String path) {
-
-        String[] parts = path.split("/");
-
-        if (parts.length != 3 || !parts[1].equals("survivors")) {
-            throw new IllegalArgumentException("Invalid path");
+    private SurvivorFilters readFilters(String rawQuery) {
+        String name = null;
+        Boolean alive = null;
+        if (rawQuery == null) {
+            return new SurvivorFilters(name, alive);
         }
 
-        return Integer.parseInt(parts[2]);
+        for (String parameter : rawQuery.split("&")) {
+            String[] parts = parameter.split("=", 2);
+            String key = decodeFilter(parts[0]);
+            if (!key.equals("name") && !key.equals("alive")) {
+                continue;
+            }
+            if (parts.length != 2) {
+                throw new BadRequestException("Expected a value for " + key);
+            }
+
+            String value = decodeFilter(parts[1]);
+            if (key.equals("name")) {
+                if (name != null) {
+                    throw new BadRequestException("Expected a single name filter");
+                }
+                name = value;
+            } else {
+                if (alive != null) {
+                    throw new BadRequestException("Expected a single alive filter");
+                }
+                alive = switch (value) {
+                    case "true" -> true;
+                    case "false" -> false;
+                    default -> throw new BadRequestException("alive must be true or false");
+                };
+            }
+        }
+
+        return new SurvivorFilters(name, alive);
+    }
+
+    private String decodeFilter(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid survivor filter", e);
+        }
+    }
+
+    private record SurvivorFilters(String name, Boolean alive) {}
+
+    private int parseId(String value) {
+        if (!value.matches("[0-9]+")) {
+            throw new BadRequestException("Invalid ID");
+        }
+
+        int id;
+        try {
+            id = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("Invalid ID", e);
+        }
+        if (id == 0) {
+            throw new BadRequestException("Invalid ID");
+        }
+        return id;
+    }
+
+    private record SurvivorResponse(int id, String name, int health, int stamina) {
+        static SurvivorResponse from(int id, Survivor survivor) {
+            return new SurvivorResponse(id, survivor.getName(), survivor.getHealth(), survivor.getStamina());
+        }
     }
 
     private void sendJson(HttpExchange exchange, int code, Object data)
@@ -242,6 +323,12 @@ public class SurvivorHandler implements HttpHandler {
         exchange.getResponseHeaders().set(
                 "Content-Type", "application/json; charset=utf-8"
         );
+
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(code, -1);
+            exchange.close();
+            return;
+        }
 
         exchange.sendResponseHeaders(code, body.length);
 

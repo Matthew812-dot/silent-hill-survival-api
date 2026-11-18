@@ -8,7 +8,9 @@ import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Collection;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 public class ItemHandler implements HttpHandler {
@@ -26,27 +28,55 @@ public class ItemHandler implements HttpHandler {
         String method = exchange.getRequestMethod();
         String path = exchange.getRequestURI().getPath();
 
+        boolean collection = path.equals("/items");
+        boolean itemPath = path.matches("/items/[^/]+");
+
         try {
+            List<String> allowedMethods;
+            if (collection) {
+                allowedMethods = List.of("GET", "POST");
+            } else if (itemPath) {
+                allowedMethods = List.of("GET", "PUT", "DELETE");
+            } else {
+                allowedMethods = List.of();
+            }
+
+            if (allowedMethods.isEmpty()) {
+                sendError(exchange, 404, "Route not found");
+                return;
+            }
+            if (!allowedMethods.contains(method)) {
+                exchange.getResponseHeaders().set("Allow", String.join(", ", allowedMethods));
+                sendError(exchange, 405, "Method not allowed");
+                return;
+            }
+
+            String[] parts = path.split("/");
 
             if (method.equals("GET")) {
 
-                if (path.equals("/items")) {
+                if (collection) {
 
-                    String query = exchange.getRequestURI().getRawQuery();
-                    Collection<Item> items;
-
-                    if (query != null && query.contains("type=")) {
-                        String type = query.substring(query.indexOf("type=") + 5);
-                        items = service.getItemsByType(type);
-                    } else {
-                        items = service.getAllItems();
+                    String type;
+                    try {
+                        type = readTypeFilter(exchange.getRequestURI().getRawQuery());
+                    } catch (IllegalArgumentException e) {
+                        sendError(exchange, 400, "Invalid type filter");
+                        return;
                     }
 
-                    sendJson(exchange, 200, items);
+                    Map<Integer, Item> items = type == null
+                            ? service.getAllItemsWithIds()
+                            : service.getItemsByTypeWithIds(type);
+                    List<ItemResponse> response = items.entrySet().stream()
+                            .map(entry -> ItemResponse.from(entry.getKey(), entry.getValue()))
+                            .toList();
+
+                    sendJson(exchange, 200, response);
                     return;
                 }
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
                 Item item = service.getItem(id);
 
                 if (item == null) {
@@ -54,15 +84,13 @@ public class ItemHandler implements HttpHandler {
                     return;
                 }
 
-                sendJson(exchange, 200, item);
+                sendJson(exchange, 200, ItemResponse.from(id, item));
                 return;
             }
 
-            if (method.equals("POST") && path.equals("/items")) {
+            if (method.equals("POST")) {
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("type") == null ||
                         !json.get("type").isString()) {
@@ -89,11 +117,9 @@ public class ItemHandler implements HttpHandler {
 
             if (method.equals("PUT")) {
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
 
-                JsonNode json = mapper.readTree(
-                        exchange.getRequestBody().readAllBytes()
-                );
+                JsonNode json = RequestBody.readJson(exchange.getRequestBody(), mapper);
 
                 if (json == null || json.get("type") == null ||
                         !json.get("type").isString()) {
@@ -125,7 +151,7 @@ public class ItemHandler implements HttpHandler {
 
             if (method.equals("DELETE")) {
 
-                int id = getId(path);
+                int id = parseId(parts[2]);
 
                 if (!service.deleteItem(id)) {
                     sendError(exchange, 404, "Item not found");
@@ -137,25 +163,68 @@ public class ItemHandler implements HttpHandler {
                 return;
             }
 
-            exchange.getResponseHeaders().set(
-                    "Allow", "GET, POST, PUT, DELETE"
-            );
-            sendError(exchange, 405, "Method not allowed");
-
-        } catch (NumberFormatException e) {
-            sendError(exchange, 400, "Invalid ID");
-        } catch (Exception e) {
+        } catch (RequestBody.TooLargeException e) {
+            exchange.getResponseHeaders().set("Connection", "close");
+            sendError(exchange, 413, e.getMessage());
+        } catch (BadRequestException e) {
+            sendError(exchange, 400, e.getMessage());
+        } catch (IOException e) {
+            exchange.close();
+            throw e;
+        } catch (RuntimeException e) {
             e.printStackTrace();
-            sendError(exchange, 400, "Invalid request");
+            if (exchange.getResponseCode() == -1) {
+                sendError(exchange, 500, "Internal server error");
+            } else {
+                exchange.close();
+            }
         }
     }
 
-    private int getId(String path) {
-        String[] parts = path.split("/");
-        if (parts.length != 3 || !parts[1].equals("items")) {
-            throw new IllegalArgumentException("Invalid path");
+    private String readTypeFilter(String rawQuery) {
+        if (rawQuery == null) {
+            return null;
         }
-        return Integer.parseInt(parts[2]);
+
+        String type = null;
+        for (String parameter : rawQuery.split("&")) {
+            String[] parts = parameter.split("=", 2);
+            String name = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
+            if (!name.equals("type")) {
+                continue;
+            }
+            if (type != null || parts.length != 2) {
+                throw new IllegalArgumentException("Expected a single type value");
+            }
+            type = URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
+            if (type.isBlank()) {
+                throw new IllegalArgumentException("Empty type value");
+            }
+        }
+        return type;
+    }
+
+    private int parseId(String value) {
+        if (!value.matches("[0-9]+")) {
+            throw new BadRequestException("Invalid ID");
+        }
+
+        int id;
+        try {
+            id = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("Invalid ID", e);
+        }
+        if (id == 0) {
+            throw new BadRequestException("Invalid ID");
+        }
+        return id;
+    }
+
+    private record ItemResponse(int id, String name) {
+        static ItemResponse from(int id, Item item) {
+            return new ItemResponse(id, item.getName());
+        }
     }
 
     private void sendJson(HttpExchange exchange, int code, Object data)
@@ -166,6 +235,12 @@ public class ItemHandler implements HttpHandler {
         exchange.getResponseHeaders().set(
                 "Content-Type", "application/json; charset=utf-8"
         );
+
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(code, -1);
+            exchange.close();
+            return;
+        }
 
         exchange.sendResponseHeaders(code, body.length);
 
