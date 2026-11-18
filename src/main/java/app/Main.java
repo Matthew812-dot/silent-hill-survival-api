@@ -10,15 +10,16 @@ public class Main {
     private static final int PORT = 8080;
 
     public static void main(String[] args) throws IOException {
+        SurvivalService service = new SurvivalService();
+
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
 
-        // Каждый контекст — это префикс пути и обработчик для него.
-        // Внимание: контекст "/ping" получит и запросы на "/ping/что-угодно".
         server.createContext("/ping", new PingHandler());
-
-        // TODO: зарегистрируйте здесь обработчики своих ресурсов
+        server.createContext("/survivors", new SurvivorHandler(service));
+        server.createContext("/items", new ItemHandler(service));
 
         server.start();
+
         System.out.println("Сервер запущен: http://localhost:" + PORT + "/ping");
     }
 }
